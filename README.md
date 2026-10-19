@@ -7,7 +7,18 @@ This repo contains the simulator, the training and evaluation tooling, the
 experiment definitions of every scenario in the paper, and the episode logs
 and trajectories behind the paper's results table and figures.
 
-Linux build link - TODO.
+The Linux build and the paper's results are attached to the
+[`arxiv-v1` release](https://github.com/MrTomzor/foragersim/releases/tag/arxiv-v1),
+not stored in git. From the repo root:
+
+```bash
+base=https://github.com/MrTomzor/foragersim/releases/download/arxiv-v1
+mkdir -p build && curl -L $base/ForagerSimBuildV1.zip -o /tmp/build.zip && unzip -q /tmp/build.zip -d build/
+curl -L $base/paper_results.zip -o /tmp/results.zip && unzip -q /tmp/results.zip -d ratsim_experiments/results/
+```
+
+This gives `build/ForagerSimBuildV1/` (picked up by `install.sh` / `env.sh`)
+and `ratsim_experiments/results/paper/<def>/`.
 
 ## Contents
 
@@ -65,7 +76,7 @@ and DreamerV3), fetches the pinned upstream DreamerV3 commit into
 `third_party/`, and editable-installs the bundled packages. `env.sh` points the
 tooling at those interpreters and at the bundled build.
 
-If the bundle has no `build/` directory, open `ratsim_unity_project/RatsimUnityProject`
+If you have not downloaded the build into `build/`, open `ratsim_unity_project/RatsimUnityProject`
 in Unity 6000.1, build a Linux player, and export `RATSIM_UNITY_BIN=/path/to/player.x86_64`.
 
 ## Run
