@@ -8,16 +8,7 @@ experiment definitions of every scenario in the paper, and the episode logs
 and trajectories behind the paper's results table and figures.
 
 The Linux build and the paper's results are attached to the
-[`arxiv-v1` release](https://github.com/MrTomzor/foragersim/releases/tag/arxiv-v1). From the repo root:
-
-```bash
-base=https://github.com/MrTomzor/foragersim/releases/download/arxiv-v1
-mkdir -p build && curl -L $base/ForagerSimBuildV1.zip -o /tmp/build.zip && unzip -q /tmp/build.zip -d build/
-curl -L $base/paper_results.zip -o /tmp/results.zip && unzip -q /tmp/results.zip -d ratsim_experiments/results/
-```
-
-This gives `build/ForagerSimBuildV1/` (picked up by `install.sh` / `env.sh`)
-and `ratsim_experiments/results/paper/<def>/`.
+[`arxiv-v1` release](https://github.com/MrTomzor/foragersim/releases/tag/arxiv-v1).
 
 ## Requirements
 
