@@ -8,8 +8,7 @@ experiment definitions of every scenario in the paper, and the episode logs
 and trajectories behind the paper's results table and figures.
 
 The Linux build and the paper's results are attached to the
-[`arxiv-v1` release](https://github.com/MrTomzor/foragersim/releases/tag/arxiv-v1),
-not stored in git. From the repo root:
+[`arxiv-v1` release](https://github.com/MrTomzor/foragersim/releases/tag/arxiv-v1). From the repo root:
 
 ```bash
 base=https://github.com/MrTomzor/foragersim/releases/download/arxiv-v1
@@ -19,39 +18,6 @@ curl -L $base/paper_results.zip -o /tmp/results.zip && unzip -q /tmp/results.zip
 
 This gives `build/ForagerSimBuildV1/` (picked up by `install.sh` / `env.sh`)
 and `ratsim_experiments/results/paper/<def>/`.
-
-## Contents
-
-| Directory                  | What it is                                                                                                                                                                                                                                                        |
-|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `ratsim/`                  | Python SDK: General-purpose ROS-like TCP connector between Python and Unity, message definitions, world / agent / task presets, task tracker (rewards, termination, exploration map), keyboard control, headless launch scripts                                                                                                                                                                                               |
-| `ratsim_wildfire_gym_env/` | Gymnasium environment wrapping the simulator through the SDK                                                                                                                                                                                                      |
-| `ratsim_ros2/`             | ROS 2 package with the frontier-exploration baseline                                                                                                                                                                                                              |
-| `ratsim_experiments/`      | Training (`train.py`, `train_dreamerv3.py`), evaluation (`test.py`), the single-machine experiment scheduler, the paper's experiment defs (`defs/`), the shipped results (`results/paper/`), and the scripts that regenerate the results table and figures |
-| `ratsim_unity_project/`    | Unity project of the simulator (Unity 6000.1). Only needed to modify the simulator or to build it for another platform                                                                                                                                            |
-
-The eight paper scenarios and their defs:
-
-| Paper name | Def | World preset |
-|---|---|---|
-| memorymaze15x15 | `memorymaze_15x15` | `maze_memorymaze_15x15` |
-| 10houses-fenced | `longyard` | `longyard_search` |
-| 4arm-submazes | `memory_orthomaze` | `maze_sectored_orthogonal` |
-| 5houses-dynamic | `memory_dynahouses_2k` | `dyna_houses` |
-| 5houses-sar | `hardsar` | `superdyna_houses` |
-| ratmaze-foraging | `wellmaze_tight_cue` | `widloski_maze_3x3_tight` |
-| forest-foraging | `forest_wells_cue_unb` | `forest_landmarks_wells_unb` |
-| 4arm-submazes-foraging | `ortho_wells_2k_nopose` | `maze_ortho_wells_nohomeprime` |
-
-Def and preset names are the working names the scenarios had when they were
-designed and do not always match the paper's names; the mapping above is the
-one in `ratsim_experiments/paper/results_table.yaml`, which every analysis
-script reads.
-
-A def names an agent preset, a task preset and a world preset
-(`ratsim/ratsim/config_blender/*_presets/`), the training length and the
-methods and seeds to run. The paper table (`ratsim_experiments/paper/results_table.yaml`)
-maps defs to paper row names.
 
 ## Requirements
 
@@ -215,7 +181,7 @@ results/paper/<def>/
 Each JSONL line carries `total_score`, `objects_found`, `collisions`,
 `termination_reason`, `steps` and `world_seed`.
 
-## Simulator
+## Simulator details
 
 The simulator is a Unity application driven over TCP with a topic-based
 protocol (`ratsim/ratsim/roslike_unity_connector/`). Each episode reset sends a
@@ -226,6 +192,40 @@ while accepting velocity commands. All data crossing the TCP boundary uses the
 ROS convention (x forward, y left, z up). `ratsim/scripts/start_ratsim_headless.sh`
 launches a build headless (with xvfb) and `stop_ratsim_headless.sh` tears it
 down; the Python tooling does the same automatically.
+
+## Contents
+
+| Directory                  | What it is                                                                                                                                                                                                                                                        |
+|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `ratsim/`                  | Python SDK: General-purpose ROS-like TCP connector between Python and Unity, message definitions, world / agent / task presets, task tracker (rewards, termination, exploration map), keyboard control, headless launch scripts                                                                                                                                                                                               |
+| `ratsim_wildfire_gym_env/` | Gymnasium environment wrapping the simulator through the SDK                                                                                                                                                                                                      |
+| `ratsim_ros2/`             | ROS 2 package with the frontier-exploration baseline                                                                                                                                                                                                              |
+| `ratsim_experiments/`      | Training (`train.py`, `train_dreamerv3.py`), evaluation (`test.py`), the single-machine experiment scheduler, the paper's experiment defs (`defs/`), the shipped results (`results/paper/`), and the scripts that regenerate the results table and figures |
+| `ratsim_unity_project/`    | Unity project of the simulator (Unity 6000.1). Only needed to modify the simulator or to build it for another platform                                                                                                                                            |
+
+The eight paper scenarios and their defs:
+
+| Paper name | Def | World preset |
+|---|---|---|
+| memorymaze15x15 | `memorymaze_15x15` | `maze_memorymaze_15x15` |
+| 10houses-fenced | `longyard` | `longyard_search` |
+| 4arm-submazes | `memory_orthomaze` | `maze_sectored_orthogonal` |
+| 5houses-dynamic | `memory_dynahouses_2k` | `dyna_houses` |
+| 5houses-sar | `hardsar` | `superdyna_houses` |
+| ratmaze-foraging | `wellmaze_tight_cue` | `widloski_maze_3x3_tight` |
+| forest-foraging | `forest_wells_cue_unb` | `forest_landmarks_wells_unb` |
+| 4arm-submazes-foraging | `ortho_wells_2k_nopose` | `maze_ortho_wells_nohomeprime` |
+
+Def and preset names are the working names the scenarios had when they were
+designed and do not always match the paper's names; the mapping above is the
+one in `ratsim_experiments/paper/results_table.yaml`, which every analysis
+script reads.
+
+A def names an agent preset, a task preset and a world preset
+(`ratsim/ratsim/config_blender/*_presets/`), the training length and the
+methods and seeds to run. The paper table (`ratsim_experiments/paper/results_table.yaml`)
+maps defs to paper row names.
+
 
 ## License
 
