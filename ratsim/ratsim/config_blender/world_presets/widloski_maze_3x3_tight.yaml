@@ -1,0 +1,128 @@
+# Widloski & Foster 2022 barrier-maze foraging apparatus (faithful 3x3).
+#
+# Open arena with a 3x3 grid of "well-rooms" separated by thin, reconfigurable
+# barriers on the inter-room grid lines. A 3x3 grid has 2*N*(N-1)=12 edge slots;
+# we fill 6 of them per episode (the paper's 6/12), reshuffled every reset.
+#
+# Each room gets one well at its center (wells/allowed_structures: well_room).
+# The Home/Random alternation scheduler (well_schedule) drives which well is armed:
+# a fixed UNCUED Home well (recall = memory demand) alternates with a randomly
+# chosen CUED Random well. Reward flows via Pickupable -> /reward_pickup -> TaskTracker.
+#
+# Use with agent preset sphereagent_2d_lidar_wells (semanticSet reward_well_obstacle,
+# which now also classes 'barrier').
+
+seed: 42
+chunk_width: 64
+
+height_generation/mode: superflat
+height_generation/superflat_height: 0
+
+vegetation/allowed_prefabs: ""
+house_generation/mode: uniform
+house_generation/allowed_prefabs: ""
+
+# Arena = grid_n*cell_size + 2*margin = 3*10 + 2*6 = 42. Keep world_bounds in sync so
+# the perimeter wall hugs the arena (the room block is centered on world origin).
+# cell_size is generous (10) so the agent (spawn safety radius ~2) has clearance to
+# spawn away from the centered well; the well is the room's only interior obstacle.
+world_bounds/width: 42
+world_bounds/height: 42
+world_bounds/structures_margin: 0
+world_bounds/boundary_type: visible_wall
+world_bounds/boundary_height: 20
+
+# ─────────────────────────────────────────────
+#  Widloski barrier maze layout
+# ─────────────────────────────────────────────
+layout/mode: widloski_maze
+layout/structures/types: ""
+layout/roads/mode: none
+
+widloski_maze/grid_n: 3
+widloski_maze/cell_size: 10.0
+widloski_maze/margin: 3.0
+widloski_maze/margin_enabled: 1        # perimeter routing on (agent can go around the outside)
+widloski_maze/n_barriers: 6            # paper 6/12; reshuffled per episode
+widloski_maze/n_tries: 200             # reachability reshuffle attempts
+widloski_maze/room_type: well_room
+widloski_maze/home_cell_mode: random   # Home at a random cell each episode (paper: pseudorandom per session).
+                                       #   none | center | random | explicit (see home_cell_gx/gz).
+                                       # The Home cell's room is labelled 'home_well_room' so spawn + schedule can target it.
+widloski_maze/home_room_type: home_well_room
+widloski_maze/home_interior_only: 0    # random mode: 1 = keep Home off the edge (3x3 -> center only)
+
+barriers/prefab_name: barrier_basic    # Resources/WorldGen/BarrierPrefabs/
+barriers/height: 3.0
+barriers/thickness: 0.3
+barriers/stretch_walls_to_fit_cell_size: 1
+barriers/stretch_walls_cell_size_percentage: 1   # paper ~0.85 (impassable end-gaps)
+
+# Where the agent spawns — INDEPENDENT of Home selection. Default: start AT the Home
+# well (in the home_well_room). Alternatives:
+#   "well_room"                 → start in a random NON-home room (away from Home)
+#   "well_room, home_well_room" → start in any room (Home included by chance)
+agents_spawn_pos/mode: in_structures
+agents_spawn_pos/allowed_structures: "home_well_room"
+
+# ─────────────────────────────────────────────
+#  Reward objects: DISABLED (wells dispense instead)
+# ─────────────────────────────────────────────
+reward_objects/uniform_density: "0"
+reward_objects/allowed_structures: ""
+
+# ─────────────────────────────────────────────
+#  Wells — one per room center
+# ─────────────────────────────────────────────
+wells/enabled: "1"
+wells/prefab_name: well_basic
+wells/seed_key: reward
+wells/allowed_structures: "well_room, home_well_room"   # both room types get one well
+wells/well_room/min_per_structure: "1"
+wells/well_room/max_per_structure: "1"
+wells/home_well_room/min_per_structure: "1"
+wells/home_well_room/max_per_structure: "1"
+
+wells/arrival_radius: "3.0"
+wells/dispense_delay_steps: "10"
+wells/cooldown_steps: "60"
+wells/deplete_on_dispense: "0"
+wells/reward_prefab: reward_obj1
+wells/reward_spawn_min_dist: "1.0"     # spawn just OUTSIDE the collideable well
+wells/reward_spawn_max_dist: "1.7"
+wells/rewards_per_dispense: "3"
+wells/debug_gizmo: "1"
+
+# Cue = abstract 'LED' via a SignalSource on the 'cue' channel (perceived by a
+# SectorSignalSensor — see agent preset sphereagent_2d_lidar_wells_cue). Only the
+# armed+CUED (Random-trial) well emits it; Home trials stay silent (the memory demand).
+wells/cue/mode: until_depleted    # none | timed | until_depleted (faithful steady LED)
+wells/cue/duration_steps: "30"    # used only when mode=timed
+wells/cue/channel: cue
+wells/cue/range: "80"             # >= arena diagonal (~59 for 42x42) → sensable anywhere
+wells/cue/strength: "1.0"
+wells/cue/falloff: linear
+
+# ─────────────────────────────────────────────
+#  Home/Random alternation scheduler (Phase 3)
+# ─────────────────────────────────────────────
+well_schedule/enabled: "1"
+well_schedule/home_source: structure   # Home well = the one in the layout's home_well_room.
+                                       #   structure | center (centroid well) | random | id (home_well_id)
+well_schedule/home_structure_type: home_well_room
+well_schedule/home_well_id: "-1"       # used only when home_source=id
+well_schedule/first_trial: random
+well_schedule/prime_home_reward: 0     # 1 = open the episode by dispensing a reward at Home (forces Home first trial)
+well_schedule/random_delay_steps: "10"
+well_schedule/home_delay_steps: "10"
+# Inter-trial gap: steps with NO well armed after each collection (paper's 5-15 s, to
+# encourage spatial coverage). Both 0 = immediate hand-off. Set nonzero to enable.
+well_schedule/inter_trial_delay_min_steps: "0"
+well_schedule/inter_trial_delay_max_steps: "0"
+well_schedule/state_topic: "/well/state"
+
+# ─────────────────────────────────────────────
+#  Misc
+# ─────────────────────────────────────────────
+smoke/global_smoke_enabled: "0"
+chaotic_walkers/enabled: "0"

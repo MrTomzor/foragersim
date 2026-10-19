@@ -1,0 +1,31 @@
+episode_max_steps: 2000
+
+foraging_settings:
+  reward_object_pickup_modifier: 1.0
+  negative_pickups_modifier: 1.0
+
+collision_settings:
+  penalize_collisions: false
+  penalization_variable: velocity
+  collision_penalty_modifier: 0.0
+  collision_flat_penalty: 20.0
+  min_col_velocity: 1.0
+
+termination_settings:
+  terminate_on_collision: false
+  collision_termination_reward: 0.0
+  terminate_on_zero_battery: true
+  zero_battery_termination_reward: 0.0
+  terminate_on_zero_health: true
+  zero_health_termination_reward: 0.0
+  terminate_on_all_rewards_collected: true
+  all_rewards_collected_termination_reward: 10.0
+
+volumetric_exploration_settings:
+  # Reward per m² of newly-explored area (free + occupied both count).
+  # Set to 0.0 to disable exploration tracking entirely.
+  reward_per_m2: 0.0
+  grid_resolution: 1.0
+  # visualize: true opens a matplotlib window showing the occupancy map.
+  visualize: false
+  viz_draw_every: 5

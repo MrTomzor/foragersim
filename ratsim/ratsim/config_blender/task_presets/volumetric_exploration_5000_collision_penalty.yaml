@@ -1,0 +1,29 @@
+episode_max_steps: 5000
+
+foraging_settings:
+  reward_object_pickup_modifier: 50.0
+  negative_pickups_modifier: 50.0
+
+collision_settings:
+  penalize_collisions: true
+  penalization_variable: velocity
+  collision_penalty_modifier: 0.0
+  collision_flat_penalty: 0.1
+  min_col_velocity: 1.0
+
+termination_settings:
+  terminate_on_collision: false
+  collision_termination_reward: 0.0
+  terminate_on_zero_battery: true
+  zero_battery_termination_reward: 0.0
+  terminate_on_zero_health: true
+  zero_health_termination_reward: 0.0
+  terminate_on_all_rewards_collected: false
+  all_rewards_collected_termination_reward: 10.0
+
+volumetric_exploration_settings:
+  reward_per_m2: 0.01
+  grid_resolution: 1
+  visualize: false
+  debug: 0
+  debug_every: 10

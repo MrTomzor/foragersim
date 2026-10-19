@@ -1,0 +1,20 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3983523c1cd3dec758c73635228a5b26, type: 3}
+  m_Name: reward_smoke_rubble_walkers_boundary
+  m_EditorClassIdentifier: 
+  prefabs:
+  - {fileID: 7644313187523702680, guid: a6f19caa8a2903f0ea49a60d61fa4b06, type: 3}
+  - {fileID: 4033839345860823829, guid: af08466c59ab65257af96fd3a3ed5831, type: 3}
+  - {fileID: 173513022965263453, guid: f0df63735e2cccd05a0668dfbb1da063, type: 3}
+  - {fileID: 3604941359812818010, guid: f05b1d56731f861148213a8d221f7dd6, type: 3}
+  - {fileID: 8758201418001311561, guid: c30064ee3219646239cd352670edf423, type: 3}

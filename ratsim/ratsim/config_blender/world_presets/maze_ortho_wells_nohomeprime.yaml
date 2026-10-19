@@ -1,0 +1,162 @@
+# Orthogonal sectored maze + wells alternation task (Home/Random, Widloski-style).
+#
+# Geometry = maze_sectored_orthogonal (4 cardinal sectors around a central chamber,
+# each arm ending in a sub-maze of rooms). On top of it, the wells task family:
+# one well per sector room, a random room labelled home_well_room each episode
+# (the paper's pseudorandom Home — AssignRoomTypes shuffles types across rooms),
+# and the Home/Random alternation scheduler. The Random-trial cue is the abstract
+# LED (SignalSource on the 'cue' channel, NO wall occlusion → a global direction
+# beacon; the agent still has to route around maze walls).
+#
+# The central chamber has NO well when Home = random room (it stays a pure hub /
+# spawn area). For the Home-IN-chamber variant, layer ortho_home_chamber.yaml on
+# top. Difficulty is NOT preset-based: the values below are the HARDEST end (d=1);
+# the adaptive_difficulty block in defs/ortho_wells_adaptive.yaml slides keys
+# down to the easiest end (d=0). Playtest any d via
+# ratsim_experiments/human_control_test_adaptive.py.
+#
+# Use with agent preset sphereagent_2d_lidar_wells_cue (sector_signal 'cue' sensor).
+
+seed: 42
+chunk_width: 64
+
+height_generation/mode: superflat
+height_generation/superflat_height: 0
+
+vegetation/allowed_prefabs: ""
+house_generation/mode: uniform
+house_generation/allowed_prefabs: ""
+
+world_bounds/width: 200
+world_bounds/height: 200
+world_bounds/structures_margin: 0
+world_bounds/boundary_type: visible_wall
+world_bounds/boundary_height: 20
+
+# ─────────────────────────────────────────────
+#  Layout: orthogonal sectored maze
+# ─────────────────────────────────────────────
+layout/mode: maze
+layout/structures/types: ""
+layout/roads/mode: none
+
+layout/structures/city/min: 0
+layout/structures/city/max: 0
+layout/structures/village/min: 0
+layout/structures/village/max: 0
+layout/structures/orchard/min: 0
+layout/structures/orchard/max: 0
+layout/structures/farm/min: 0
+layout/structures/farm/max: 0
+
+maze/mode: rooms_and_corridors
+maze/cell_size: 1.0
+maze/wall_height: 3.0
+
+maze/n_rooms: 19                       # chamber + 18 sector rooms (slid down by adaptive_difficulty)
+maze/room_min_size_cells: 7
+maze/room_max_size_cells: 31
+maze/room_min_separation_cells: 2
+maze/room_max_attempts: 200
+maze/corridor_width_cells: 3
+maze/extra_corridor_fraction: 0.9
+maze/border_walls: 1
+maze/edge_walls_only: 1
+maze/semantic_name: maze_wall
+
+maze/sectors/style: orthogonal
+maze/sectors/central_chamber_size_cells: 9
+
+# ─────────────────────────────────────────────
+#  Room labeling — one random room is Home each episode
+# ─────────────────────────────────────────────
+# AssignRoomTypes shuffles types across the sector rooms, so the single
+# home_well_room lands in a different (seeded) room every reset. The Home room is
+# a normal well room in every way except its label — the scheduler finds the Home
+# well through it (well_schedule/home_source=structure), and agent spawn can
+# target it (agents_spawn_pos/allowed_structures: home_well_room = start at Home).
+maze/rooms/types: "central_chamber, home_well_room, reward_room"
+maze/rooms/central_chamber/min: 1
+maze/rooms/central_chamber/max: 1
+maze/rooms/central_chamber/force_central: 1
+maze/rooms/home_well_room/min: 1
+maze/rooms/home_well_room/max: 1
+maze/rooms/reward_room/min: 17         # n_rooms - chamber - home (slid down by adaptive_difficulty)
+maze/rooms/reward_room/max: 17
+
+# ─────────────────────────────────────────────
+#  Spawning — independent of Home selection
+# ─────────────────────────────────────────────
+#   "home_well_room"   → start AT the Home well (default; constant across difficulty)
+#   "central_chamber"  → start in the hub
+#   "reward_room"      → start in a random non-home room
+agents_spawn_pos/mode: in_structures
+agents_spawn_pos/allowed_structures: "home_well_room"
+agents_spawn_pos/randomize_rotation: 1
+
+# ─────────────────────────────────────────────
+#  Reward objects: DISABLED (wells dispense instead)
+# ─────────────────────────────────────────────
+reward_objects/uniform_density: "0"
+reward_objects/allowed_structures: ""
+
+# ─────────────────────────────────────────────
+#  Wells — one per sector room; NONE in the central chamber
+# ─────────────────────────────────────────────
+wells/enabled: "1"
+wells/prefab_name: well_basic
+wells/seed_key: reward
+wells/allowed_structures: "reward_room, home_well_room"
+wells/reward_room/min_per_structure: "1"
+wells/reward_room/max_per_structure: "1"
+wells/home_well_room/min_per_structure: "1"
+wells/home_well_room/max_per_structure: "1"
+
+# Maze rooms expose one slot per floor cell, so the well lands on a random cell.
+# room_edge_buffer keeps it (and its reward annulus) off the walls; too-small
+# rooms fall back to the centre-most slot.
+wells/room_edge_buffer: "2.0"
+
+wells/arrival_radius: "3.0"
+wells/dispense_delay_steps: "10"
+wells/cooldown_steps: "60"
+wells/deplete_on_dispense: "0"
+wells/reward_prefab: reward_obj1
+wells/reward_spawn_min_dist: "1.0"     # spawn just OUTSIDE the collideable well
+wells/reward_spawn_max_dist: "1.7"
+wells/rewards_per_dispense: "3"
+wells/debug_gizmo: "1"
+
+# Cue = abstract LED on the 'cue' channel; range >= arena diagonal (~283 for
+# 200x200) so it's sensable anywhere. No wall occlusion (deliberate): direction
+# is known, the path around the maze walls is not.
+wells/cue/mode: until_depleted
+wells/cue/duration_steps: "30"    # used only when mode=timed
+wells/cue/channel: cue
+wells/cue/range: "300"            # overridden per difficulty (≈ arena diagonal + margin)
+wells/cue/strength: "1.0"
+wells/cue/falloff: linear
+
+# ─────────────────────────────────────────────
+#  Home/Random alternation scheduler
+# ─────────────────────────────────────────────
+well_schedule/enabled: "1"
+well_schedule/home_source: structure   # Home well = the one in the home_well_room
+well_schedule/home_structure_type: home_well_room
+well_schedule/home_well_id: "-1"
+well_schedule/first_trial: random      # paper: session opens with an LED (Random) trial
+# Fixed across ALL difficulties (change here, never in adaptive_difficulty ranges).
+# 1 = open each episode with a Home dispense (the paper has no such freebie —
+# set 0 for the faithful variant where the session starts with the LED trial).
+well_schedule/prime_home_reward: 0
+well_schedule/random_delay_steps: "10"
+well_schedule/home_delay_steps: "10"
+well_schedule/inter_trial_delay_min_steps: "0"
+well_schedule/inter_trial_delay_max_steps: "0"
+well_schedule/state_topic: "/well/state"
+
+# ─────────────────────────────────────────────
+#  Misc
+# ─────────────────────────────────────────────
+smoke/global_smoke_enabled: "0"
+chaotic_walkers/enabled: "0"

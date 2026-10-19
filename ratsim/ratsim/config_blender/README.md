@@ -1,0 +1,1 @@
+TODO - should contain some presets of world, of agents, and should offer the ability to produce a unified config json / dictionary given an array of preset names, applying them consecutively onto the dict. Result does not need to contain values for all possible parameters, since the simulator only checks which params are in the world / agents config dicts and applies those.

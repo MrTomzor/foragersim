@@ -1,0 +1,97 @@
+seed: 42
+chunk_width: 128
+
+vegetation/allowed_prefabs: tree1
+# vegetation/tree1/density: 0.005
+vegetation/tree1/density: 0.0
+
+height_generation/mode: superflat
+height_generation/superflat_height: 0
+house_generation/mode: uniform
+house_generation/allowed_prefabs: "house1_small, mall1"
+
+world_bounds/width: 130
+world_bounds/height: 130
+world_bounds/structures_margin: 5
+world_bounds/boundary_type: visible_wall
+world_bounds/boundary_height: 20
+
+city/layout_mode: grid
+# Which house prefabs cities may spawn (must exist in Resources/WorldGen/WorldStructurePrefabs/
+# and start with "house"). Empty string = use all discovered house* prefabs.
+city/allowed_houses: "house_basic"
+# Per-prefab relative spawn weight (default 1). 0 disables that prefab.
+city/house_basic/probability: "1"
+
+layout/structures/house_basic/min: 5
+layout/structures/house_basic/max: 5
+layout/structures/types: "house_basic"
+layout/roads/mode: none
+
+agents_spawn_pos: random
+
+house/allowed_door_prefabs: "door1,door2"
+house/door1/probability: "1"
+house/door2/probability: "0"
+house/enable_roofs: "0"
+house/chance_wall_broken: "1.0"
+# house/rubble_prefab: rubble_dense_small
+house/rubble_prefab: rubble_dense_multisize
+house/rubble_mass: "0.2"
+house/rubble_mass_multipliers: "1,1000"
+house/clutter_density: "0.5"
+house/allowed_car_prefabs: car1
+house/car_spawn_chance: "0.5"
+
+smoke/global_smoke_enabled: "0"
+smoke/2dmode_enabled: "1"
+smoke/3dmode_enabled: "0"
+smoke/default_radius: 20
+smoke/default_density: 0.1
+# smoke/corruption_mode: "random_hits"
+smoke/corruption_mode: "effective_range"
+smoke/effective_range: 6
+smoke/effective_range_variance: 1
+
+chaotic_walkers/enabled: "1"
+chaotic_walkers/prefab_name: chaotic_walker_abstract
+chaotic_walkers/density: "0.005"
+# Throughput knobs — same walkers, same density, ~2.8x faster sim.
+# sleep_distance: walkers further than this from every agent are parked (velocity
+#   zeroed, Rigidbody.Sleep(), wander frozen) and wake when an agent returns. The
+#   walker prefab uses a zero-friction material, so walkers never decelerate and
+#   PhysX would otherwise never sleep any of them — that kept all ~825 awake and
+#   cost ~1.7ms/step no matter how rarely they were ticked. 40 leaves a 20m buffer
+#   over the fullsar lidar range (20m), so nothing un-freezes inside sensor view.
+# max_ticks_per_step: hard cap on walkers stepped per sim step, round-robin. Bounds
+#   the per-step cost of visiting the population; without it the mean step time has
+#   a heavy tail even with sleeping on.
+chaotic_walkers/sleep_distance: "40"
+chaotic_walkers/max_ticks_per_step: "50"
+chaotic_walkers/avoidance_probability: "0.5"
+chaotic_walkers/aggression_probability: "0"
+chaotic_walkers/reaction_radius: "5"
+chaotic_walkers/reaction_velocity: "2"
+chaotic_walkers/min_velocity: "1"
+chaotic_walkers/max_velocity: "1.5"
+chaotic_walkers/walk_duration_min_sec: "1.0"
+chaotic_walkers/walk_duration_max_sec: "3.0"
+chaotic_walkers/pause_duration_min_sec: "0.5"
+chaotic_walkers/pause_duration_max_sec: "2.0"
+chaotic_walkers/bounded: "0"
+chaotic_walkers/bound_radius: "15"
+chaotic_walkers/inward_bias_strength: "2"
+
+# reward_objects/signal_source/enable_probability: "1"
+# reward_objects/signal_source/channel: reward
+# reward_objects/signal_source/strength: "1"
+# reward_objects/signal_source/range: "80"
+# reward_objects/signal_source/falloff: linear
+
+reward_objects/prefab_name: reward_obj1
+reward_objects/uniform_density: "0.0"
+reward_objects/allowed_structures: "house_basic, house_mall"
+# reward_objects/house_basic/spawn_probability: "1.0"
+# reward_objects/house_basic/skip_probability: "0"
+reward_objects/house_basic/min_per_structure: 4
+reward_objects/house_basic/max_per_structure: 4

@@ -1,0 +1,31 @@
+# DreamerV3 method deps (CPU JAX variant of upstream dreamerv3's requirements.txt).
+# Skips ale-py / autorom / nvidia-cuda-nvcc since we don't need Atari or CUDA locally.
+# Install into a dedicated venv (e.g. <bundle>/.venvs/dreamer_venv), then editable-install
+# ratsim and ratsim_wildfire_gym_env on top, and editable-install the pinned upstream dreamerv3 (see install.sh).
+jax==0.4.33
+av
+chex
+colored_traceback
+einops
+elements>=3.19.1
+google-resumable-media>=2.7.2
+granular>=0.20.3
+ipdb
+jaxtyping
+ninjax>=3.5.1
+numpy<2
+optax
+portal>=3.5.0
+scope>=0.4.4
+tqdm
+ruamel.yaml
+gymnasium
+pyyaml
+# TF 2.21 has a regression (bool/callable bug in profiler.trace); pin to 2.19.1.
+# Required by elements.logger.TensorBoardOutput as the events writer backend.
+tensorflow-cpu==2.19.1
+
+# Experiment tracking. Pure Python, no CUDA deps -- verified on a compute node
+# that installing it upgrades nothing (torch 2.13.0+cu126 and jax 0.4.33 both
+# untouched), so it is safe alongside the pinned GPU wheels above.
+wandb

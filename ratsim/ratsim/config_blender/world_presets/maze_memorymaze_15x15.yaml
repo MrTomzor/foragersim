@@ -1,0 +1,113 @@
+# Mimics the memory-maze task layout:
+# https://github.com/jurgisp/memory-maze (which uses DeepMind labmaze under the hood).
+#
+# Algorithm (MazeLayoutLoader, mode="memory_maze"):
+#   1. Rejection-sample odd-aligned, odd-sized rooms.
+#   2. DFS recursive backtracker fills every remaining odd cell with 1-wide corridors.
+#   3. For every adjacent region pair, knock out exactly one separating wall (mandatory),
+#      then knock out each remaining candidate wall with extra_connection_probability (loops).
+
+seed: 42
+chunk_width: 64
+
+height_generation/mode: superflat
+height_generation/superflat_height: 0
+
+vegetation/allowed_prefabs: ""
+house_generation/mode: uniform
+house_generation/allowed_prefabs: ""
+
+# Divide by cell-size to get memory-maze cell count (45x45 / 3 = 15x15 = original largest maze size)
+# world_bounds/width: 45
+# world_bounds/height: 45
+world_bounds/width: 75
+world_bounds/height: 75
+world_bounds/structures_margin: 0
+world_bounds/boundary_type: visible_wall
+world_bounds/boundary_height: 20
+
+# ─────────────────────────────────────────────
+#  Layout / maze
+# ─────────────────────────────────────────────
+layout/mode: maze
+layout/structures/types: ""
+layout/roads/mode: none
+
+maze/mode: memory_maze
+
+maze/cell_size: 5.0
+maze/wall_height: 5.0
+# maze/cell_size: 3.0
+# maze/wall_height: 3.0
+
+# Room budget (= labmaze max_rooms). Rejection sampling stops at this count or when
+# room_max_attempts retries are exhausted. memory-maze 11x11 uses 6.
+maze/n_rooms: 9
+
+# memory-maze 11x11 uses room_min_size=3, room_max_size=5. Both are rounded up to odd
+# by this loader if even values are passed. Min must be >=3.
+maze/room_min_size_cells: 3
+maze/room_max_size_cells: 3
+
+# Inner retry budget: rejection-sample this many positions per outer attempt before
+# giving up and restarting from scratch (matches labmaze default 1000).
+maze/room_max_attempts: 1000
+
+# Outer retry budget: greedy random placement often paints itself into a corner near
+# the theoretical packing limit (e.g. 9 rooms of size 3 in a 15x15 mask), so we
+# restart from scratch up to this many times if the inner loop falls short. Each
+# attempt is independent of the last, so even ~10% per-attempt success rate
+# converges to >99.99% with 100 outer retries.
+maze/room_placement_retries: 100
+
+# Loop density. labmaze default 0.0 = pure tree (one wall opened per region pair).
+# Increase toward 1.0 for densely-connected mazes with many shortcuts.
+maze/extra_connection_probability: 0.0
+
+# 1-cell wall ring around the mask edge.
+maze/border_walls: 1
+
+maze/semantic_name: maze_wall
+
+# Spawn the agent inside a random room (any of our two room types). Generic
+# pipeline force-loads the wall chunks around the candidate before physics-
+# checking, so the agent never lands on a wall block even though walls are
+# chunk-streamed.
+agents_spawn_pos/mode: in_structures
+agents_spawn_pos/allowed_structures: "reward_room, empty_room"
+
+# ─────────────────────────────────────────────
+#  Room labeling
+# ─────────────────────────────────────────────
+# memory-maze 11x11 places 4 colored targets, one per room (n_targets=4 over
+# max_rooms=6). We split the rooms into "reward_room" (gets a reward) and
+# "empty_room" (doesn't). Geometry is identical; the labels just tell
+# RewardObjectLoader which rooms to populate.
+#
+# Mins/maxes validated against rooms actually generated. If the maze produces
+# fewer rooms than reward_room/min, the loader emits an explicit error rather
+# than silently degrading.
+maze/rooms/types: "reward_room, empty_room"
+maze/rooms/reward_room/min: 6
+maze/rooms/reward_room/max: 6
+maze/rooms/empty_room/min: 3
+maze/rooms/empty_room/max: 3
+
+# ─────────────────────────────────────────────
+#  Reward objects
+# ─────────────────────────────────────────────
+# Exactly one reward per reward_room (memory-maze targets_per_room=1).
+# Random cell within the room thanks to the LOD0/rewardSpawnPositions/cell_i_j
+# hierarchy MazeLayoutLoader builds for every room.
+reward_objects/prefab_name: reward_obj1
+reward_objects/uniform_density: "0"
+reward_objects/boundary_buffer: "0"
+reward_objects/allowed_structures: "reward_room"
+reward_objects/reward_room/min_per_structure: "1"
+reward_objects/reward_room/max_per_structure: "1"
+
+# ─────────────────────────────────────────────
+#  Misc
+# ─────────────────────────────────────────────
+smoke/global_smoke_enabled: "0"
+chaotic_walkers/enabled: "0"

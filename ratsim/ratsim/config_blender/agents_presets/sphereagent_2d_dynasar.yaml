@@ -1,0 +1,25 @@
+prefab_name: SphereAgent
+name_prefix: rat1
+sensors:
+  - name: lidar2d
+    maxRange: 30.0
+    angleStartDeg: -90
+    angleEndDeg: 90
+    angleIncrementDeg: 10
+    occlusionRegion: none
+    occlusionDistance: 0.5
+    semanticSet: reward_rubble_walkers_boundary
+  - name: collision
+  - name: relative_pose
+  - name: compass
+    biasRad: 0.0
+  # - name: sector_signal
+  #   channels: reward
+  #   nSectors: 5
+  #   sigmaBins: 1.0
+  #   topicPrefix: /sector_signal
+actuators: velocity
+velocity/steeringBias: 0.0
+velocity/blockLeftTurn: false
+velocity/blockRightTurn: false
+max_health: 100.0

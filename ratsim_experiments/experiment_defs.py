@@ -1,0 +1,523 @@
+"""Experiment-def schema + loader.
+
+An experiment def (`defs/<exp_id>.yaml`) is the single source of truth for an
+experiment: which agent / task / world to use, the curriculum of stages, the
+methods to compare, the variations (per-axis overrides) to test, and the
+seed count. The scheduler dispatches one (run, stage) at a time; train.py
+consumes the same def to resolve a single (variation, stage)'s configs.
+
+Lives at the top of ratsim_experiments so train.py / train_dreamerv3.py /
+scheduler all import from one place.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+
+import yaml
+
+
+# --- Coercion helper -------------------------------------------------------
+
+def as_preset_list(v) -> list[str]:
+    """Coerce `string | list | None` → list of preset names."""
+    if v is None:
+        return []
+    if isinstance(v, str):
+        return [v]
+    if isinstance(v, list):
+        return [str(x) for x in v]
+    raise TypeError(
+        f"expected string or list of preset names, got {type(v).__name__}: {v!r}")
+
+
+# --- Schema dataclasses ----------------------------------------------------
+
+@dataclass
+class StageSpec:
+    """One stage of the experiment (shared across all runs).
+
+    `world_preset=None` means "fall back to variation.world_preset →
+    experiment-level world_preset" at resolution time.
+    """
+    steps: int
+    world_preset: list[str] | None = None
+
+    def to_dict(self) -> dict:
+        d: dict = {"steps": self.steps}
+        if self.world_preset is not None:
+            d["world_preset"] = list(self.world_preset)
+        return d
+
+
+@dataclass
+class VariationSpec:
+    """Override bundle on top of the experiment defaults."""
+    name: str
+    agent_preset: list[str] | None = None
+    task_preset: list[str] | None = None
+    world_preset: list[str] | None = None
+    method_args: dict = field(default_factory=dict)
+
+
+@dataclass
+class AdaptiveDifficultySpec:
+    """Avalon-style adaptive difficulty (def block `adaptive_difficulty:`).
+
+    A scalar d in [0,1] slides `ranges` keys over the world config between
+    episodes: +step_up after a success (episode_pickups >= success_pickups),
+    -step_down after a failure. Stages keep their scheduling role (BFS/DFS
+    interleaving + per-stage checkpoints) and the walk persists across them
+    (trainers resume d from train_episodes.jsonl) — but stages must not set
+    their own world_preset: adaptive difficulty is the world schedule.
+    All parallel envs of a run share ONE walk by default (file-backed with
+    flock, persists across stages — the file subsumes the jsonl resume); set
+    `shared: false` for the legacy behavior of an independent walk per env.
+    Consumed by AdaptiveDifficultyWrapper in ratsim_wildfire_gym_env.
+    """
+    ranges: dict
+    success_pickups: int = 4
+    step_up: float = 0.01
+    step_down: float = 0.01
+    d0: float = 0.0
+    shared: bool = True
+
+    def to_dict(self) -> dict:
+        return {
+            "ranges": dict(self.ranges),
+            "success_pickups": self.success_pickups,
+            "step_up": self.step_up,
+            "step_down": self.step_down,
+            "d0": self.d0,
+            "shared": self.shared,
+        }
+
+
+# Parallel Unity envs per training process, unless a method overrides it.
+#
+# This lives on the experiment def, not the machine config, because n_envs
+# changes *what the run learns*, not just how fast it goes: fewer envs means
+# less trajectory diversity per update, so a 4-env run and a 1-env run of the
+# "same" experiment are not comparable results. Pinning one value across every
+# machine is what makes a laptop run and a cluster run the same experiment.
+#
+# 4 is the measured sweet spot — see the cluster notes §0.8/§0.9. It also
+# sets the CPU floor: below roughly 4 threads per env, throughput collapses
+# (a 4-env PPO run on 4 threads managed 17 fps against 688 on 16), so a machine
+# profile granting `cpu_slot: 4 * n_envs` or more is the sizing rule.
+DEFAULT_N_ENVS = 4
+
+
+@dataclass
+class MethodSpec:
+    name: str
+    n_seeds: int
+    n_envs: int = DEFAULT_N_ENVS
+    args: dict = field(default_factory=dict)
+    python_env: str | None = None
+    train_script: str | None = None
+
+
+@dataclass
+class ExperimentDef:
+    exp_id: str
+    source: Path
+    agent_preset: list[str]
+    task_preset: list[str]
+    world_preset: list[str]   # default world (used when stages don't specify)
+    stages: list[StageSpec]
+    methods: list[MethodSpec]
+    variations: list[VariationSpec]   # always non-empty (default [{name: baseline}])
+    mode: str                 # "bfs" or "dfs"
+    step_multiplier: float = 1.0
+    common_args: dict = field(default_factory=dict)
+    adaptive_difficulty: AdaptiveDifficultySpec | None = None
+
+
+# --- Loading ---------------------------------------------------------------
+
+def _expand_stages(raw: dict, exp_world_preset: list[str], src: Path) -> list[StageSpec]:
+    """Resolve the stage list from either the `stages:` long form or any TWO of
+    the three scalars below (the third is derived; giving all three is allowed
+    and checked for consistency).
+
+      steps_per_stage + total_steps    ✅ best — author the budget and the
+                                          granularity, n_stages is derived
+      steps_per_stage + n_stages       ✅ fine — total is derived
+      total_steps     + n_stages       ⚠️ legacy — the STAGE SIZE is derived
+
+    Why the last one is the bad pair. `checkpoints/stage_<i>.done` records
+    *that stage K finished*, never how big it was — so stage size is the one
+    quantity resume silently depends on. Derive it, and editing either of the
+    other two resizes every stage including the ones already marked done: bump
+    `total_steps` 12M → 18M on a run that finished 30 of 40 stages and those 30
+    markers now claim 450k steps of training that never happened, which resume
+    then builds on without complaint.
+
+    Pin `steps_per_stage` and that can't happen. Raising `total_steps` just
+    appends stages; every finished one keeps its meaning.
+    """
+    if "stages" in raw:
+        clashes = [k for k in ("steps_per_stage", "total_steps", "n_stages")
+                   if k in raw]
+        if clashes:
+            raise ValueError(
+                f"{src}: `stages:` (long form) cannot be combined with "
+                f"`{'`, `'.join(clashes)}` — the long form already states every "
+                f"stage's size.")
+        raw_stages = raw["stages"] or []
+        if not raw_stages:
+            raise ValueError(f"{src}: `stages:` must contain at least one stage")
+        out = []
+        for i, s in enumerate(raw_stages):
+            if "steps" not in s:
+                raise ValueError(f"{src}: stage {i} missing `steps:`")
+            # accept legacy plural `world_presets:`
+            wp = s.get("world_preset", s.get("world_presets"))
+            wp_list = as_preset_list(wp) if wp is not None else None
+            out.append(StageSpec(steps=int(s["steps"]), world_preset=wp_list))
+        return out
+
+    per = raw.get("steps_per_stage")
+    total = raw.get("total_steps")
+    n = raw.get("n_stages")
+    for key, val in (("steps_per_stage", per), ("total_steps", total),
+                     ("n_stages", n)):
+        if val is not None and int(val) <= 0:
+            raise ValueError(f"{src}: {key} must be > 0, got {val}")
+    per = int(per) if per is not None else None
+    total = int(total) if total is not None else None
+    n = int(n) if n is not None else None
+
+    if sum(x is not None for x in (per, total, n)) < 2:
+        raise ValueError(
+            f"{src}: give any two of `steps_per_stage:`, `total_steps:`, "
+            f"`n_stages:` (or use the `stages:` long form). Preferred pairing "
+            f"is steps_per_stage + total_steps.")
+
+    if per is not None and total is not None:
+        # The ergonomic pairing: you state a budget and a granularity, and the
+        # stage count follows. Must divide evenly — a ragged final stage would
+        # reintroduce exactly the hazard this pairing avoids, because raising
+        # total_steps later would resize that already-completed short stage.
+        derived_n = total // per
+        if derived_n * per != total:
+            low, high = derived_n * per, (derived_n + 1) * per
+            raise ValueError(
+                f"{src}: total_steps={total:,} is not a multiple of "
+                f"steps_per_stage={per:,}. Nearest usable totals: "
+                f"{low:,} ({derived_n} stages) or {high:,} "
+                f"({derived_n + 1} stages).")
+        if n is not None and n != derived_n:
+            raise ValueError(
+                f"{src}: n_stages={n} contradicts total_steps={total:,} / "
+                f"steps_per_stage={per:,} = {derived_n}. Drop n_stages, or fix "
+                f"it to {derived_n}.")
+        n = derived_n
+    elif per is not None:
+        total = per * n
+    else:
+        per = total // n
+        if per <= 0:
+            raise ValueError(
+                f"{src}: total_steps={total:,} / n_stages={n} rounds down to "
+                f"{per} steps per stage.")
+        if per * n != total:
+            print(f"[experiment_def] WARNING: {src.name}: total_steps="
+                  f"{total:,} not divisible by n_stages={n}; truncating each "
+                  f"stage to {per:,} steps (loss = {total - per*n:,}).")
+
+    return [StageSpec(steps=per, world_preset=None) for _ in range(n)]
+
+
+def _parse_methods(raw_methods, default_n_seeds: int, src: Path) -> list[MethodSpec]:
+    if not raw_methods:
+        raise ValueError(f"{src}: at least one method required under `methods:`")
+    out: list[MethodSpec] = []
+    seen = set()
+    for i, m in enumerate(raw_methods):
+        if not isinstance(m, dict) or "name" not in m:
+            raise ValueError(f"{src}: methods[{i}] must be a dict with 'name'")
+        name = m["name"]
+        if name in seen:
+            raise ValueError(f"{src}: duplicate method '{name}'")
+        seen.add(name)
+        n_envs = int(m.get("n_envs", DEFAULT_N_ENVS))
+        if n_envs < 1:
+            raise ValueError(
+                f"{src}: methods[{i}] '{name}': n_envs must be >= 1, got {n_envs}")
+        out.append(MethodSpec(
+            name=name,
+            n_seeds=int(m.get("n_seeds", default_n_seeds)),
+            n_envs=n_envs,
+            args=dict(m.get("args") or {}),
+            python_env=m.get("python_env"),
+            train_script=m.get("train_script"),
+        ))
+    return out
+
+
+def _parse_variations(raw, src: Path) -> list[VariationSpec]:
+    if raw is None:
+        return [VariationSpec(name="baseline")]
+    if not isinstance(raw, list) or not raw:
+        raise ValueError(f"{src}: `variations:` must be a non-empty list (or omitted)")
+    out: list[VariationSpec] = []
+    seen = set()
+    for i, v in enumerate(raw):
+        if not isinstance(v, dict) or "name" not in v:
+            raise ValueError(f"{src}: variations[{i}] must be a dict with 'name'")
+        name = v["name"]
+        if name in seen:
+            raise ValueError(f"{src}: duplicate variation '{name}'")
+        seen.add(name)
+        out.append(VariationSpec(
+            name=name,
+            agent_preset=as_preset_list(v["agent_preset"]) if "agent_preset" in v else None,
+            task_preset=as_preset_list(v["task_preset"]) if "task_preset" in v else None,
+            world_preset=as_preset_list(v["world_preset"]) if "world_preset" in v else None,
+            method_args=dict(v.get("method_args") or {}),
+        ))
+    return out
+
+
+def _parse_adaptive_difficulty(raw, src: Path) -> "AdaptiveDifficultySpec | None":
+    block = raw.get("adaptive_difficulty")
+    if block is None:
+        return None
+    if not isinstance(block, dict):
+        raise ValueError(f"{src}: `adaptive_difficulty:` must be a mapping")
+    ranges = block.get("ranges")
+    if not isinstance(ranges, dict) or not ranges:
+        raise ValueError(f"{src}: `adaptive_difficulty:` needs a non-empty `ranges:` mapping")
+    for key, spec in ranges.items():
+        if not isinstance(spec, dict):
+            raise ValueError(f"{src}: adaptive_difficulty range '{key}' must be a mapping")
+        has_linear = "from" in spec and "to" in spec
+        has_switch = "switch_at" in spec and "below" in spec and "above" in spec
+        if not (has_linear or has_switch):
+            raise ValueError(
+                f"{src}: adaptive_difficulty range '{key}' needs either from/to "
+                f"or switch_at/below/above, got {spec!r}")
+    d0 = float(block.get("d0", 0.0))
+    if not 0.0 <= d0 <= 1.0:
+        raise ValueError(f"{src}: adaptive_difficulty d0 must be in [0, 1], got {d0}")
+    return AdaptiveDifficultySpec(
+        ranges=dict(ranges),
+        success_pickups=int(block.get("success_pickups", 4)),
+        step_up=float(block.get("step_up", 0.01)),
+        step_down=float(block.get("step_down", 0.01)),
+        d0=d0,
+        shared=bool(block.get("shared", True)),
+    )
+
+
+def _validate_world_resolves(exp: ExperimentDef) -> None:
+    """Every (stage, variation) pair must resolve to a non-empty world_preset."""
+    for s_idx, stage in enumerate(exp.stages):
+        if stage.world_preset:
+            continue
+        for var in exp.variations:
+            if var.world_preset:
+                continue
+            if not exp.world_preset:
+                raise ValueError(
+                    f"{exp.source}: stage {s_idx} under variation '{var.name}' "
+                    f"has no world_preset. Set top-level `world_preset:`, "
+                    f"per-variation `world_preset:`, or per-stage `world_preset:`.")
+
+
+def build_experiment_def(raw: dict, *, source: Path, exp_id: str) -> ExperimentDef:
+    """Construct an ExperimentDef from a raw dict (the same shape a def
+    YAML deserializes to). Used by both `load_experiment_def` (file → dict
+    → ExperimentDef) and inline-from-CLI builders in train.py."""
+    agent_preset = as_preset_list(raw.get("agent_preset", "sphereagent_2d_lidar"))
+    task_preset = as_preset_list(raw.get("task_preset", "default"))
+    world_preset = as_preset_list(raw.get("world_preset"))
+
+    stages = _expand_stages(raw, world_preset, source)
+    default_n_seeds = int(raw.get("seeds", 1))
+    methods = _parse_methods(raw.get("methods"), default_n_seeds, source)
+    variations = _parse_variations(raw.get("variations"), source)
+
+    mode = raw.get("mode", "bfs")
+    if mode not in ("bfs", "dfs"):
+        raise ValueError(f"{source}: mode must be 'bfs' or 'dfs', got {mode!r}")
+
+    adaptive_difficulty = _parse_adaptive_difficulty(raw, source)
+    if adaptive_difficulty is not None:
+        # Multiple stages are fine WITH adaptive difficulty — they keep their
+        # scheduling role (BFS/DFS interleaving + per-stage checkpoints), and
+        # the difficulty walk persists across stage boundaries (each stage
+        # resumes d from the run's train_episodes.jsonl). What stages must NOT
+        # do here is swap worlds: adaptive difficulty IS the world schedule,
+        # sliding its ranges over the single top-level world_preset.
+        for i, st in enumerate(stages):
+            if st.world_preset is not None:
+                raise ValueError(
+                    f"{source}: with `adaptive_difficulty:`, stage {i} must not set "
+                    f"`world_preset:` — set the base world via top-level "
+                    f"`world_preset:`; the ranges slide on top of it. Stages only "
+                    f"provide scheduling/checkpoint boundaries.")
+
+    exp = ExperimentDef(
+        exp_id=exp_id,
+        source=source,
+        agent_preset=agent_preset,
+        task_preset=task_preset,
+        world_preset=world_preset,
+        stages=stages,
+        methods=methods,
+        variations=variations,
+        mode=mode,
+        step_multiplier=float(raw.get("step_multiplier", 1.0)),
+        common_args=dict(raw.get("common_args") or {}),
+        adaptive_difficulty=adaptive_difficulty,
+    )
+    _validate_world_resolves(exp)
+    return exp
+
+
+def load_experiment_def(path: Path) -> ExperimentDef:
+    path = Path(path)
+    with open(path) as f:
+        raw = yaml.safe_load(f) or {}
+    return build_experiment_def(raw, source=path, exp_id=path.stem)
+
+
+def build_inline_def(method_name: str, overrides: dict) -> ExperimentDef:
+    """Pop experiment-shaping keys out of `overrides` and build an inline
+    single-method, single-variation def. Used by train.py / train_dreamerv3.py
+    when run without `def=`. Mutates `overrides` in place by removing the
+    consumed keys.
+
+    Recognized CLI keys (all optional except where noted):
+      agent, task, world   (string or list of preset names — map to
+                            agent_preset / task_preset / world_preset
+                            internally and in the YAML schema)
+      steps_per_stage      (preferred; one of these three is required)
+      total_steps          (legacy alternative to steps_per_stage)
+      n_stages             (defaults to 1 if either is given alone)
+      stages               (list of {steps, world_preset} dicts — rare on CLI)
+      mode                 ('bfs' or 'dfs', meaningless with one method, default 'bfs')
+      step_multiplier      (passes through; train.py applies it to stage.steps)
+    """
+    raw: dict = {}
+    cli_alias = {"agent": "agent_preset", "task": "task_preset", "world": "world_preset"}
+    for cli_key, raw_key in cli_alias.items():
+        if cli_key in overrides:
+            raw[raw_key] = overrides.pop(cli_key)
+    for key in ("steps_per_stage", "total_steps", "n_stages", "stages",
+                "mode", "step_multiplier"):
+        if key in overrides:
+            raw[key] = overrides.pop(key)
+    # Inline default: a bare step count on the CLI means a single stage.
+    if ("n_stages" not in raw and "stages" not in raw
+            and ("total_steps" in raw or "steps_per_stage" in raw)):
+        raw["n_stages"] = 1
+    raw["methods"] = [{"name": method_name}]
+    raw["seeds"] = 1
+    return build_experiment_def(raw, source=Path("<cli>"), exp_id="cli_run")
+
+
+def resolve_def_path(defs_dir: Path, name_or_path: str) -> Path:
+    """Bare name → defs_dir/<name>.yaml; anything path-like → as-is."""
+    if "/" in name_or_path or name_or_path.endswith((".yaml", ".yml")):
+        return Path(name_or_path)
+    return defs_dir / f"{name_or_path}.yaml"
+
+
+# --- Resolution helpers ----------------------------------------------------
+
+def find_variation(exp: ExperimentDef, name: str) -> VariationSpec:
+    for v in exp.variations:
+        if v.name == name:
+            return v
+    raise KeyError(
+        f"variation '{name}' not found in {exp.source}. "
+        f"Available: {[v.name for v in exp.variations]}")
+
+
+def resolve_agent_preset(exp: ExperimentDef, var: VariationSpec) -> list[str]:
+    return list(var.agent_preset if var.agent_preset is not None else exp.agent_preset)
+
+
+def resolve_task_preset(exp: ExperimentDef, var: VariationSpec) -> list[str]:
+    return list(var.task_preset if var.task_preset is not None else exp.task_preset)
+
+
+def resolve_stage_world(stage: StageSpec, var: VariationSpec,
+                        exp: ExperimentDef) -> list[str]:
+    """Pick the world_preset list for this (stage, variation) pair.
+
+    Precedence (highest → lowest): per-stage explicit → per-variation → per-exp.
+    """
+    if stage.world_preset:
+        return list(stage.world_preset)
+    if var.world_preset:
+        return list(var.world_preset)
+    return list(exp.world_preset)
+
+
+def resolve_difficulty_overrides(exp: ExperimentDef, difficulty: float) -> dict:
+    """World-config overrides pinning an adaptive-difficulty def at a fixed d.
+
+    Eval counterpart to the training-time walk: AdaptiveDifficultyWrapper slides
+    d between episodes, this evaluates the def's `adaptive_difficulty.ranges:`
+    once at a d the caller picks and returns a flat override dict to merge over
+    the stage's world config. Merge it, don't wrap — nothing should move d
+    during an eval.
+
+    Raises ValueError if the def has no `adaptive_difficulty:` block (nothing to
+    interpolate) or d is outside [0, 1].
+    """
+    d = float(difficulty)
+    if not 0.0 <= d <= 1.0:
+        raise ValueError(f"difficulty must be in [0, 1], got {difficulty}")
+    if exp.adaptive_difficulty is None:
+        raise ValueError(
+            f"{exp.source}: a fixed difficulty needs an `adaptive_difficulty:` "
+            f"block in the def (no ranges to interpolate).")
+    # Local import: the scheduler imports this module without the gym env.
+    from ratsim_wildfire_gym_env.adaptive_difficulty import interpolate_ranges
+    return interpolate_ranges(exp.adaptive_difficulty.ranges, d)
+
+
+# --- Snapshot --------------------------------------------------------------
+
+def snapshot_experiment(exp: ExperimentDef) -> dict:
+    """Resolved-and-canonical dict form, suitable for dumping as the
+    experiment.yaml snapshot in the results dir."""
+    out: dict = {
+        "exp_id": exp.exp_id,
+        "agent_preset": list(exp.agent_preset),
+        "task_preset": list(exp.task_preset),
+    }
+    if exp.world_preset:
+        out["world_preset"] = list(exp.world_preset)
+    out["stages"] = [s.to_dict() for s in exp.stages]
+    out["methods"] = [
+        # n_envs is always emitted, never omitted-when-default: it changes what
+        # the run learns, so a snapshot without it can't be compared or replayed.
+        {"name": m.name, "n_seeds": m.n_seeds, "n_envs": m.n_envs,
+         **({"args": dict(m.args)} if m.args else {}),
+         **({"python_env": m.python_env} if m.python_env else {}),
+         **({"train_script": m.train_script} if m.train_script else {})}
+        for m in exp.methods
+    ]
+    out["variations"] = [
+        {"name": v.name,
+         **({"agent_preset": list(v.agent_preset)} if v.agent_preset is not None else {}),
+         **({"task_preset": list(v.task_preset)} if v.task_preset is not None else {}),
+         **({"world_preset": list(v.world_preset)} if v.world_preset is not None else {}),
+         **({"method_args": dict(v.method_args)} if v.method_args else {})}
+        for v in exp.variations
+    ]
+    out["mode"] = exp.mode
+    if exp.adaptive_difficulty is not None:
+        out["adaptive_difficulty"] = exp.adaptive_difficulty.to_dict()
+    if exp.step_multiplier != 1.0:
+        out["step_multiplier"] = exp.step_multiplier
+    if exp.common_args:
+        out["common_args"] = dict(exp.common_args)
+    return out

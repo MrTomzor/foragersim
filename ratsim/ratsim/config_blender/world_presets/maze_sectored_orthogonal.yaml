@@ -1,0 +1,104 @@
+# Orthogonal sectored maze: 4 cardinal sectors (N/E/S/W) connected to a central
+# chamber by exactly 4 straight cardinal corridors. Sectors are wedges separated
+# by the diagonal walls running from chamber corners to mask corners.
+#
+# Topology guarantee: chamber has exactly 4 exits (one straight corridor per
+# cardinal direction). Each corridor leads to a forced axis-aligned "first room"
+# in that sector; the rest of the sector branches off from there via per-sector
+# MST + loops. There are no explicit divider walls: rooms are confined to their
+# wedge and every intra-sector L-corridor bends at the room farther from the
+# chamber, which keeps the corridor inside the (convex) wedge — so sectors never
+# touch (MazeLayoutLoader verifies this per episode and warns if it ever fails).
+
+seed: 42
+chunk_width: 64
+
+height_generation/mode: superflat
+height_generation/superflat_height: 0
+
+vegetation/allowed_prefabs: ""
+house_generation/mode: uniform
+house_generation/allowed_prefabs: ""
+
+world_bounds/width: 200
+world_bounds/height: 200
+world_bounds/structures_margin: 0
+world_bounds/boundary_type: visible_wall
+world_bounds/boundary_height: 20
+
+# ─────────────────────────────────────────────
+#  Layout
+# ─────────────────────────────────────────────
+layout/mode: maze
+layout/structures/types: ""
+layout/roads/mode: none
+
+layout/structures/city/min: 0
+layout/structures/city/max: 0
+layout/structures/village/min: 0
+layout/structures/village/max: 0
+layout/structures/orchard/min: 0
+layout/structures/orchard/max: 0
+layout/structures/farm/min: 0
+layout/structures/farm/max: 0
+
+# ─────────────────────────────────────────────
+#  Maze + sectors
+# ─────────────────────────────────────────────
+maze/mode: rooms_and_corridors
+maze/cell_size: 1.0
+maze/wall_height: 3.0
+
+# Total rooms = chamber + sector rooms. n_rooms=9 gives 1 chamber + 8 sector rooms
+# (~2 per sector under round-robin, with one of those forced to be axis-aligned).
+maze/n_rooms: 19
+maze/room_min_size_cells: 7
+maze/room_max_size_cells: 31
+maze/room_min_separation_cells: 2
+maze/room_max_attempts: 200
+maze/corridor_width_cells: 3
+
+# Per-sector loopiness — each sector's MST gets extras up to this fraction of its
+# non-tree pairs. Chamber doesn't participate, so this is purely intra-sector.
+maze/extra_corridor_fraction: 0.9
+maze/border_walls: 1
+maze/edge_walls_only: 1
+maze/semantic_name: maze_wall
+
+# Orthogonal sectored style.
+maze/sectors/style: orthogonal
+# Recommended >= corridor_width_cells + 4 for the orthogonal style; with cw=3 that
+# means >=7. Smaller chambers will pinch the cardinal corridor at the chamber
+# boundary (the diagonal-band band squeezes the strip down to 1 cell wide there).
+maze/sectors/central_chamber_size_cells: 9
+
+# ─────────────────────────────────────────────
+#  Room labeling
+# ─────────────────────────────────────────────
+maze/rooms/types: "central_chamber, reward_room"
+maze/rooms/central_chamber/min: 1
+maze/rooms/central_chamber/max: 1
+maze/rooms/central_chamber/force_central: 1
+maze/rooms/reward_room/min: 18
+maze/rooms/reward_room/max: 18
+
+# ─────────────────────────────────────────────
+#  Spawning
+# ─────────────────────────────────────────────
+agents_spawn_pos/mode: in_structures
+agents_spawn_pos/allowed_structures: "central_chamber"
+# Randomize agent yaw on spawn so the policy can't memorize "first turn always X".
+agents_spawn_pos/randomize_rotation: 1
+
+reward_objects/prefab_name: reward_obj1
+reward_objects/uniform_density: "0"
+reward_objects/boundary_buffer: "2"
+reward_objects/allowed_structures: "reward_room"
+reward_objects/reward_room/min_per_structure: "2"
+reward_objects/reward_room/max_per_structure: "2"
+
+# ─────────────────────────────────────────────
+#  Misc
+# ─────────────────────────────────────────────
+smoke/global_smoke_enabled: "0"
+chaotic_walkers/enabled: "0"

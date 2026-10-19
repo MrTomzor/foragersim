@@ -1,0 +1,18 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3983523c1cd3dec758c73635228a5b26, type: 3}
+  m_Name: reward_well_obstacle
+  m_EditorClassIdentifier: 
+  prefabs:
+  - {fileID: 7644313187523702680, guid: a6f19caa8a2903f0ea49a60d61fa4b06, type: 3}
+  - {fileID: 15728573188745519, guid: de6d2e281b782bd24b0ed1595ec17b69, type: 3}
+  - {fileID: 4611234567890120001, guid: 2dedbe399f994efea3428900bb3cb8ba, type: 3}

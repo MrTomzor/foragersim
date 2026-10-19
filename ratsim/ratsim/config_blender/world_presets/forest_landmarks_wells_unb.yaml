@@ -1,0 +1,134 @@
+# Forest + landmarks + randomly scattered wells (Home/Random alternation task).
+#
+# Open 130x130 box with trees at forest density, the three landmark prefabs from
+# empty_box_130_houses_l as the only orientation cues, and N wells at random
+# positions. There are NO houses and NO scattered reward objects.
+#
+# How the wells land at random positions: the well loader can only anchor wells to
+# structures with reward slots, so each well sits on a `well_pad` — a tiny invisible
+# WorldStructure prefab (footprint + one centre slot + VegetationModification=Remove)
+# that the default layout loader scatters like any other structure. The pad clears
+# trees around the well; the well itself (well_basic, Default layer) is what lidar sees.
+#
+# Home = the well on the single `home_well_pad` (a pad prefab identical to well_pad except
+# for its structureType), placed at a random position each episode by the layout loader.
+# The scheduler finds it via well_schedule/home_source=structure, and the agent spawns on
+# that pad (agents_spawn_pos/allowed_structures: home_well_pad), i.e. starts AT Home.
+# Home is otherwise unmarked, so the agent must remember it relative to the landmarks.
+# Random-trial wells are cued on the abstract 'cue' signal channel (no occlusion).
+#
+# Spawn-at-Home needs the home pad footprint big enough for the agent's spawn safety
+# sphere (radius 2) to clear the well collider (radius 0.5): in_structures spawning
+# samples within (half-size - 2) of the pad centre, so the pad must be >= ~9 m, ~12 m
+# for a good acceptance rate. A 5 m pad rejects every candidate and falls back to the
+# world centre.
+#
+# Use with agent preset sphereagent_2d_lidar_wells_cue.
+# Requires the well_pad + home_well_pad prefabs in Resources/WorldGen/WorldStructurePrefabs/.
+
+seed: 42
+chunk_width: 128
+
+height_generation/mode: superflat
+height_generation/superflat_height: 0
+house_generation/mode: uniform
+house_generation/allowed_prefabs: ""
+
+# ─────────────────────────────────────────────
+#  Forest
+# ─────────────────────────────────────────────
+vegetation/allowed_prefabs: tree1
+vegetation/tree1/density: 0.003          # same as static_forest_foraging_small
+
+world_bounds/width: 130
+world_bounds/height: 130
+world_bounds/structures_margin: 5
+world_bounds/boundary_type: none
+world_bounds/boundary_height: 20
+
+# ─────────────────────────────────────────────
+#  Layout: landmarks + well pads, scattered by the default layout loader
+# ─────────────────────────────────────────────
+layout/max_layout_attempts: 100
+layout/roads/mode: none
+
+layout/structures/landmark_star/min: 1
+layout/structures/landmark_star/max: 1
+layout/structures/landmark_cylinder/min: 1
+layout/structures/landmark_cylinder/max: 1
+layout/structures/rock1/min: 1
+layout/structures/rock1/max: 1
+layout/structures/well_pad/min: 7
+layout/structures/well_pad/max: 7
+layout/structures/home_well_pad/min: 1
+layout/structures/home_well_pad/max: 1
+layout/structures/types: "landmark_star, landmark_cylinder, rock1, well_pad, home_well_pad"
+
+# ─────────────────────────────────────────────
+#  Spawning — start AT the Home well (on the home_well_pad)
+# ─────────────────────────────────────────────
+#   "home_well_pad"           → start at Home (default)
+#   "well_pad"                → start at a random non-home well
+#   "well_pad, home_well_pad" → start at any well
+# StartsWith matching keeps "well_pad" and "home_well_pad" distinct.
+agents_spawn_pos/mode: in_structures
+agents_spawn_pos/allowed_structures: "home_well_pad"
+agents_spawn_pos/randomize_rotation: 1
+
+# ─────────────────────────────────────────────
+#  Reward objects: DISABLED (wells dispense instead)
+# ─────────────────────────────────────────────
+reward_objects/uniform_density: "0"
+reward_objects/allowed_structures: ""
+
+# ─────────────────────────────────────────────
+#  Wells — one per pad (7 well_pad + 1 home_well_pad = 8 wells)
+# ─────────────────────────────────────────────
+wells/enabled: "1"
+wells/prefab_name: well_basic
+wells/seed_key: reward
+wells/allowed_structures: "well_pad, home_well_pad"
+wells/well_pad/min_per_structure: "1"
+wells/well_pad/max_per_structure: "1"
+wells/home_well_pad/min_per_structure: "1"
+wells/home_well_pad/max_per_structure: "1"
+wells/room_edge_buffer: "0"              # pad has a single centre slot; buffer is a maze-room concept
+
+wells/arrival_radius: "3.0"
+wells/dispense_delay_steps: "10"
+wells/cooldown_steps: "60"
+wells/deplete_on_dispense: "0"
+wells/reward_prefab: reward_obj1
+wells/reward_spawn_min_dist: "1.0"       # spawn just OUTSIDE the collideable well
+wells/reward_spawn_max_dist: "1.7"
+wells/rewards_per_dispense: "3"
+wells/debug_gizmo: "1"
+
+# Cue = abstract LED on the 'cue' channel; range >= arena diagonal (~184 for 130x130).
+wells/cue/mode: until_depleted
+wells/cue/duration_steps: "30"           # used only when mode=timed
+wells/cue/channel: cue
+wells/cue/range: "200"
+wells/cue/strength: "1.0"
+wells/cue/falloff: linear
+
+# ─────────────────────────────────────────────
+#  Home/Random alternation scheduler
+# ─────────────────────────────────────────────
+well_schedule/enabled: "1"
+well_schedule/home_source: structure     # Home well = the one on the home_well_pad
+well_schedule/home_structure_type: home_well_pad
+well_schedule/home_well_id: "-1"
+well_schedule/first_trial: random        # paper: session opens with an LED (Random) trial
+well_schedule/prime_home_reward: 0
+well_schedule/random_delay_steps: "10"
+well_schedule/home_delay_steps: "10"
+well_schedule/inter_trial_delay_min_steps: "0"
+well_schedule/inter_trial_delay_max_steps: "0"
+well_schedule/state_topic: "/well/state"
+
+# ─────────────────────────────────────────────
+#  Misc
+# ─────────────────────────────────────────────
+smoke/global_smoke_enabled: "0"
+chaotic_walkers/enabled: "0"

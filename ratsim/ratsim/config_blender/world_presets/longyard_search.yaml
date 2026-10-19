@@ -1,0 +1,106 @@
+# "Long yards search": the static twin of longyard_sar — same 5x2 grid of 56x104 m yards, one
+# house_basic per yard (4 rewards each), 5 tree_yard + 5 bare_yard shuffled per seed. Nothing
+# dynamic: walls intact (no rubble), no smoke, no walkers. Doors, cars and clutter are static
+# props and stay as in longyard_sar. Same seed -> same layout, houses and trees as longyard_sar.
+#
+# Geometry (maze/cell_size = 2 m): yards 28x52 cells = 56x104 m (half the width of the
+# cell_grid_sar cells), fences 1 cell = 2 m, outer fence 2 m:
+# grid = 5*56 + 4*2 + 2*2 = 292 m x 2*104 + 2 + 2*2 = 214 m. World 298x220 -> mask 149x110
+# cells, which fits the 146x107 grid plus the 1-cell border ring.
+# house_basic footprint 30x21.5 m (diagonal 37 m): with margin 4 m any rotation fits a 56 m yard.
+# Fence gaps are 2 cells = 4 m (hole_cells).
+
+seed: 42
+chunk_width: 64
+
+height_generation/mode: superflat
+height_generation/superflat_height: 0
+
+house_generation/mode: uniform
+house_generation/allowed_prefabs: ""
+
+world_bounds/width: 298
+world_bounds/height: 220
+world_bounds/structures_margin: 0
+world_bounds/boundary_type: visible_wall
+world_bounds/boundary_height: 20
+
+layout/mode: maze
+layout/structures/types: ""
+layout/roads/mode: none
+
+maze/mode: cell_grid
+maze/cell_size: 2.0
+maze/wall_height: 3.0
+maze/border_walls: 1
+maze/edge_walls_only: 1
+maze/semantic_name: maze_wall
+
+maze/cell_grid/cols: 5
+maze/cell_grid/rows: 2
+maze/cell_grid/cell_w_cells: 28
+maze/cell_grid/cell_h_cells: 52
+maze/cell_grid/fence_cells: 1
+maze/cell_grid/outer_fence_cells: 1
+maze/cell_grid/holes: all                    # every pair of neighbouring cells connected
+maze/cell_grid/extra_hole_probability: 0.0
+maze/cell_grid/hole_position: random
+maze/cell_grid/hole_cells: 2                 # 4 m gap
+maze/cell_grid/margin_floor: 0
+
+# Yard types: exactly 5 tree_yard + 5 bare_yard, shuffled per seed.
+maze/rooms/types: "tree_yard, bare_yard"
+maze/rooms/tree_yard/min: 5
+maze/rooms/tree_yard/max: 5
+maze/rooms/bare_yard/min: 5
+maze/rooms/bare_yard/max: 5
+
+# ── Fill: CityLoader puts one house in every yard ──
+city/parent_types: "tree_yard, bare_yard"
+city/allowed_houses: house_basic             # city/<key> applies to both yard types
+city/max_houses: 1
+city/max_attempts: 100
+city/house_spacing: 6.0
+city/margin: 4.0
+city/rotation: free
+city/layout_mode: random
+
+# ── Vegetation: trees only in tree_yard cells, not inside the house ──
+vegetation/allowed_prefabs: tree1
+vegetation/tree1/density: 0.007              # ~17 trees per 56x104 m yard before rejection
+vegetation/allowed_structures: tree_yard
+vegetation/denied_structures: house
+
+# ── Houses: as in longyard_sar but intact — no broken walls, so no rubble ──
+house/allowed_door_prefabs: "door1,door2"
+house/door1/probability: "0"
+house/door2/probability: "0"
+house/enable_roofs: "0"
+house/chance_wall_broken: "0"
+house/rubble_prefab: rubble_dense_multisize
+house/rubble_mass: "0.2"
+house/rubble_mass_multipliers: "1,1000"
+house/clutter_density: "0.5"
+house/allowed_car_prefabs: car1
+house/car_spawn_chance: "0.5"
+
+# ── No smoke (house_basic carries a SmokeOrigin; 2D/3D smoke modes off) ──
+smoke/global_smoke_enabled: "0"
+smoke/2dmode_enabled: "0"
+smoke/3dmode_enabled: "0"
+
+# ── No walkers ──
+chaotic_walkers/enabled: "0"
+
+# ── Agent: start in any yard, outside the houses ──
+agents_spawn_pos/mode: in_structures
+agents_spawn_pos/allowed_structures: "tree_yard, bare_yard"
+agents_spawn_pos/denied_structures: "house"
+agents_spawn_pos/randomize_rotation: 1
+
+# ── Rewards: four per house (as in superdyna_houses / cell_grid_sar) ──
+reward_objects/prefab_name: reward_obj1
+reward_objects/uniform_density: "0"
+reward_objects/allowed_structures: "house_basic"
+reward_objects/house_basic/min_per_structure: "6"
+reward_objects/house_basic/max_per_structure: "6"

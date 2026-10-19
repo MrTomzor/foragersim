@@ -1,0 +1,30 @@
+# sphereagent_2d_lidar_wells + the abstract 'cue' channel (the paper's LED, modelled as a
+# SectorSignalSensor instead of RGB). The well scheduler enables a SignalSource on the
+# 'cue' channel at the armed+cued (Random-trial) well; this sensor reports its egocentric
+# direction. On Home trials nothing is cued -> the cue sectors read ~0 (the memory demand).
+#
+# Pairs with the widloski_maze_* world presets (wells/cue/mode + well_schedule).
+prefab_name: SphereAgent
+name_prefix: rat1
+sensors:
+  - name: lidar2d
+    maxRange: 30.0
+    angleStartDeg: -90
+    angleEndDeg: 90
+    angleIncrementDeg: 10
+    occlusionRegion: none
+    occlusionDistance: 0.5
+    semanticSet: reward_well_obstacle
+  - name: collision
+  - name: compass
+    biasRad: 0.0
+  - name: sector_signal
+    channels: cue
+    nSectors: 8
+    sigmaBins: 1.0
+    topicPrefix: /sector_signal
+actuators: velocity
+velocity/steeringBias: 0.0
+velocity/blockLeftTurn: false
+velocity/blockRightTurn: false
+max_health: 100.0
