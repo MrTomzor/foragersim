@@ -1,4 +1,4 @@
-# ForagerSim (previous project name ratsim): 
+# ForagerSim
 ForagerSim is a multidisciplinary simulation environment built for investigating map-based reasoning in large-scale dynamic worlds with a unified scenario definition allowing evaluation of both ROS2 and Gym-based agents on the same tasks (volumetric exploration, multi-object search, rat-study home-return task etc.).
 
 Accompanying paper preprint - TODO.
