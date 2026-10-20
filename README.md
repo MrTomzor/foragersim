@@ -1,7 +1,7 @@
 # ForagerSim
-ForagerSim is a multidisciplinary simulation environment built for investigating map-based reasoning in large-scale dynamic worlds with a unified scenario definition allowing evaluation of both ROS2 and Gym-based agents on the same tasks (volumetric exploration, multi-object search, rat-study home-return task etc.).
+ForagerSim is a multidisciplinary simulation environment built for investigating map-based reasoning in large-scale dynamic worlds with a unified scenario definition allowing evaluation of both ROS2 and Gym-based agents on the same tasks (volumetric exploration, multi-object search, rat-study home-return task etc.). This repo contains the code and data for replicating the results in the ForagerSim paper, and development of the framework will continue in this repo in the future.
 
-Accompanying paper preprint - TODO.
+Accompanying paper preprint - https://arxiv.org/abs/2610.26395
 
 This repo contains the simulator, the training and evaluation tooling, the
 experiment definitions of every scenario in the paper, and the episode logs
